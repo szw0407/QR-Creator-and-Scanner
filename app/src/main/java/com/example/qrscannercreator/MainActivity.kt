@@ -12,6 +12,9 @@ import android.net.Uri
 import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiManager
 import android.net.wifi.WifiNetworkSpecifier
+import android.net.wifi.WifiNetworkSuggestion
+import android.net.ConnectivityManager
+import android.net.NetworkRequest
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -49,6 +52,7 @@ import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import java.util.*
 import androidx.core.graphics.createBitmap
+import androidx.core.net.toUri
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -76,8 +80,10 @@ fun QRCodeApp() {
     var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var decodedText by remember { mutableStateOf("") }
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+      val context = LocalContext.current
     
-    val context = LocalContext.current
+    // 存储待连接的WiFi信息
+    var pendingWifiInfo by remember { mutableStateOf<String?>(null) }
     
     // 相机权限请求
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
@@ -85,6 +91,23 @@ fun QRCodeApp() {
     ) { isGranted ->
         if (!isGranted) {
             Toast.makeText(context, "需要相机权限来扫描二维码", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    // 位置权限请求 (用于WiFi连接)
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            Toast.makeText(context, "位置权限已授予，正在连接WiFi...", Toast.LENGTH_SHORT).show()
+            // 权限授予后，连接待连接的WiFi
+            pendingWifiInfo?.let { wifiQrCode ->
+                connectToWifi(context, wifiQrCode)
+                pendingWifiInfo = null // 清除待连接信息
+            }
+        } else {
+            Toast.makeText(context, "位置权限被拒绝，无法自动连接WiFi", Toast.LENGTH_LONG).show()
+            pendingWifiInfo = null // 清除待连接信息
         }
     }
     
@@ -263,11 +286,16 @@ fun QRCodeApp() {
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     // 根据内容类型显示特定按钮
-                    when {
-                        decodedText.startsWith("WIFI:") -> {
+                    when {                        decodedText.startsWith("WIFI:") -> {
                             Button(
                                 onClick = {
-                                    connectToWifi(context, decodedText)
+                                    connectToWifiWithPermissionCheck(
+                                        context, 
+                                        decodedText, 
+                                        locationPermissionLauncher
+                                    ) { wifiQrCode ->
+                                        pendingWifiInfo = wifiQrCode
+                                    }
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
@@ -417,7 +445,7 @@ fun isDomainLike(text: String): Boolean {
  */
 fun openUrl(context: Context, url: String) {
     try {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        val intent = Intent(Intent.ACTION_VIEW, url.toUri())
         context.startActivity(intent)
         Toast.makeText(context, "正在打开: $url", Toast.LENGTH_SHORT).show()
     } catch (e: Exception) {
@@ -434,10 +462,58 @@ fun copyToClipboard(context: Context, text: String) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText("扫码结果", text)
         clipboard.setPrimaryClip(clip)
-        Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
-    } catch (e: Exception) {
+        Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()    } catch (e: Exception) {
         e.printStackTrace()
         Toast.makeText(context, "复制失败: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/**
+ * 带权限检查的WiFi连接函数
+ */
+fun connectToWifiWithPermissionCheck(
+    context: Context, 
+    wifiQrCode: String,
+    locationPermissionLauncher: androidx.activity.result.ActivityResultLauncher<String>,
+    setPendingWifi: (String) -> Unit
+) {
+    try {
+        // 解析WiFi二维码格式
+        val wifiInfo = parseWifiQrCode(wifiQrCode)
+        if (wifiInfo == null) {
+            Toast.makeText(context, "WiFi二维码格式错误", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        // Android 10+需要位置权限
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val hasLocationPermission = ContextCompat.checkSelfPermission(
+                context, 
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+            
+            if (!hasLocationPermission) {
+                // 储存待连接的WiFi信息
+                setPendingWifi(wifiQrCode)
+                
+                // 请求位置权限
+                Toast.makeText(
+                    context, 
+                    "连接WiFi需要位置权限，正在请求权限...", 
+                    Toast.LENGTH_SHORT
+                ).show()
+                
+                locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                return
+            }
+        }
+        
+        // 有权限或Android 9-，直接连接
+        connectToWifi(context, wifiQrCode)
+        
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "WiFi连接失败: ${e.message}", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -449,13 +525,11 @@ fun connectToWifi(context: Context, wifiQrCode: String) {
         // 解析WiFi二维码格式: WIFI:T:WPA;S:networkname;P:password;H:false;
         val wifiInfo = parseWifiQrCode(wifiQrCode)
         if (wifiInfo != null) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Android 10+ 使用新的WiFi连接方式
-                connectWifiAndroid10Plus(context, wifiInfo)
-            } else {
-                // Android 9 及以下使用旧的方式
-                connectWifiLegacy(context, wifiInfo)
-            }
+            // Android 10+ 使用新的WiFi连接方式
+            requestNetworkConnection(
+                context,
+                wifiInfo
+            );
         } else {
             Toast.makeText(context, "WiFi二维码格式错误", Toast.LENGTH_SHORT).show()
         }
@@ -502,74 +576,66 @@ fun parseWifiQrCode(qrCode: String): WifiInfo? {
         return null
     }
 }
-
 /**
- * Android 10+ WiFi连接
+ * Android 11+ 使用NetworkRequest请求网络连接
  */
-@androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
-fun connectWifiAndroid10Plus(context: Context, wifiInfo: WifiInfo) {
+fun requestNetworkConnection(context: Context, wifiInfo: WifiInfo) {
     try {
-        // Android 10+ 需要用户手动连接，我们只能打开WiFi设置
-        val intent = Intent(Settings.ACTION_WIFI_SETTINGS)
-        context.startActivity(intent)
-        Toast.makeText(context, "请在WiFi设置中手动连接到: ${wifiInfo.ssid}", Toast.LENGTH_LONG).show()
-    } catch (e: Exception) {
-        e.printStackTrace()
-        Toast.makeText(context, "无法打开WiFi设置", Toast.LENGTH_SHORT).show()
-    }
-}
-
-/**
- * Android 9及以下WiFi连接
- */
-@Suppress("DEPRECATION")
-fun connectWifiLegacy(context: Context, wifiInfo: WifiInfo) {
-    try {
-        val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         
-        // 检查WiFi是否开启
-        if (!wifiManager.isWifiEnabled) {
-            Toast.makeText(context, "请先开启WiFi", Toast.LENGTH_SHORT).show()
-            return
-        }
-        
-        val wifiConfig = WifiConfiguration().apply {
-            SSID = "\"${wifiInfo.ssid}\""
-            
-            when (wifiInfo.security.uppercase()) {
-                "WEP" -> {
-                    wepKeys[0] = "\"${wifiInfo.password}\""
-                    wepTxKeyIndex = 0
-                    allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE)
-                    allowedGroupCiphers.set(WifiConfiguration.GroupCipher.WEP40)
+        val networkSpecifier = WifiNetworkSpecifier.Builder()
+            .setSsid(wifiInfo.ssid)
+            .apply {
+                when (wifiInfo.security.uppercase()) {
+                    "WPA", "WPA2", "WPA3" -> {
+                        setWpa2Passphrase(wifiInfo.password)
+                    }
+                    "WEP" -> {
+                        // WEP在新API中不推荐，降级为WPA2
+                        setWpa2Passphrase(wifiInfo.password)
+                    }
+                    "NONE" -> {
+                        // 开放网络
+                    }
                 }
-                "WPA", "WPA2" -> {
-                    preSharedKey = "\"${wifiInfo.password}\""
-                    allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK)
-                }
-                "NONE" -> {
-                    allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE)
+                
+                if (wifiInfo.hidden) {
+                    setIsHiddenSsid(true)
                 }
             }
-            
-            hiddenSSID = wifiInfo.hidden
+            .build()
+
+        val networkRequest = NetworkRequest.Builder()
+            .addTransportType(android.net.NetworkCapabilities.TRANSPORT_WIFI)
+            .setNetworkSpecifier(networkSpecifier)
+            .build()
+
+        val networkCallback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) {
+                super.onAvailable(network)
+                // 网络连接成功
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    Toast.makeText(context, "已连接到WiFi: ${wifiInfo.ssid}", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            override fun onUnavailable() {
+                super.onUnavailable()
+                // 连接失败
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    Toast.makeText(context, "连接WiFi失败，请检查密码或手动连接", Toast.LENGTH_LONG).show()
+                }
+            }
         }
+
+        connectivityManager.requestNetwork(networkRequest, networkCallback, 10000) // 10秒超时
+        Toast.makeText(context, "正在尝试连接到: ${wifiInfo.ssid}...", Toast.LENGTH_SHORT).show()
         
-        val networkId = wifiManager.addNetwork(wifiConfig)
-        if (networkId != -1) {
-            wifiManager.disconnect()
-            wifiManager.enableNetwork(networkId, true)
-            wifiManager.reconnect()
-            Toast.makeText(context, "正在连接到: ${wifiInfo.ssid}", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(context, "WiFi配置添加失败", Toast.LENGTH_SHORT).show()
-        }
     } catch (e: Exception) {
         e.printStackTrace()
-        Toast.makeText(context, "WiFi连接失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "网络请求失败: ${e.message}", Toast.LENGTH_SHORT).show()
     }
 }
-
 @Preview(showBackground = true)
 @Composable
 fun QRCodeAppPreview() {
