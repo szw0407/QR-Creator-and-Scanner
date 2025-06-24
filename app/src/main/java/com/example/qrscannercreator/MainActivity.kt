@@ -1,18 +1,29 @@
 package com.example.qrscannercreator
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
+import android.net.wifi.WifiConfiguration
+import android.net.wifi.WifiManager
+import android.net.wifi.WifiNetworkSpecifier
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -58,6 +69,7 @@ class MainActivity : ComponentActivity() {
 
 
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun QRCodeApp() {
     var inputText by remember { mutableStateOf("Hello QR Code!") }
@@ -208,8 +220,7 @@ fun QRCodeApp() {
                 Text("从图片")
             }
         }
-        
-        // 显示解码结果
+          // 显示解码结果
         if (decodedText.isNotEmpty()) {
             Card(
                 modifier = Modifier.fillMaxWidth()
@@ -222,23 +233,66 @@ fun QRCodeApp() {
                         style = MaterialTheme.typography.titleMedium
                     )
                     Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // 可点击和长按的解码结果文本
                     Text(
                         text = decodedText,
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .combinedClickable(
+                                onClick = {
+                                    handleScanResultAction(context, decodedText)
+                                },
+                                onLongClick = {
+                                    copyToClipboard(context, decodedText)
+                                }
+                            )
+                            .padding(8.dp)
                     )
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    // 检查是否是WiFi二维码
-                    if (decodedText.startsWith("WIFI:")) {
-                        Button(
-                            onClick = {
-                                // 暂时显示提示，explain函数功能待实现
-                                Toast.makeText(context, "WiFi连接功能待实现", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("连接到WiFi (功能待实现)")
+                    // 提示信息
+                    Text(
+                        text = "点击执行操作，长按复制",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // 根据内容类型显示特定按钮
+                    when {
+                        decodedText.startsWith("WIFI:") -> {
+                            Button(
+                                onClick = {
+                                    connectToWifi(context, decodedText)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("连接到WiFi")
+                            }
+                        }
+                        isUrl(decodedText) -> {
+                            Button(
+                                onClick = {
+                                    openUrl(context, decodedText)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("打开链接")
+                            }
+                        }
+                        isDomainLike(decodedText) -> {
+                            Button(
+                                onClick = {
+                                    openUrl(context, "https://$decodedText")
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("作为网址打开")
+                            }
                         }
                     }
                 }
@@ -300,11 +354,219 @@ fun decodeQRCode(bitmap: Bitmap): String? {
         val source = RGBLuminanceSource(width, height, pixels)
         val binaryBitmap = BinaryBitmap(HybridBinarizer(source))
         val result = MultiFormatReader().decode(binaryBitmap, hints)
-        
-        result.text
+          result.text
     } catch (e: NotFoundException) {
         e.printStackTrace()
         null
+    }
+}
+
+/**
+ * 处理扫码结果的点击操作
+ */
+fun handleScanResultAction(context: Context, text: String) {
+    when {
+        text.startsWith("WIFI:") -> {
+            connectToWifi(context, text)
+        }
+        isUrl(text) -> {
+            openUrl(context, text)
+        }
+        isDomainLike(text) -> {
+            openUrl(context, "https://$text")
+        }
+        else -> {
+            // 普通文本，复制到剪贴板
+            copyToClipboard(context, text)
+        }
+    }
+}
+
+/**
+ * 判断是否为URL
+ */
+fun isUrl(text: String): Boolean {
+    val urlPatterns = listOf(
+        "^https?://.*",
+        "^ftp://.*",
+        "^mailto:.*",
+        "^tel:.*",
+        "^sms:.*",
+        "^geo:.*",
+        "^market://.*",
+        "^intent://.*"
+    )
+    return urlPatterns.any { pattern ->
+        text.matches(Regex(pattern, RegexOption.IGNORE_CASE))
+    }
+}
+
+/**
+ * 判断是否看起来像域名
+ */
+fun isDomainLike(text: String): Boolean {
+    // 简单的域名模式检测
+    val domainPattern = "^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\\.[a-zA-Z]{2,}(/.*)?$"
+    return text.matches(Regex(domainPattern, RegexOption.IGNORE_CASE)) && 
+           !text.contains(" ") && 
+           text.length < 200
+}
+
+/**
+ * 打开URL
+ */
+fun openUrl(context: Context, url: String) {
+    try {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        context.startActivity(intent)
+        Toast.makeText(context, "正在打开: $url", Toast.LENGTH_SHORT).show()
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "无法打开链接: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/**
+ * 复制到剪贴板
+ */
+fun copyToClipboard(context: Context, text: String) {
+    try {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText("扫码结果", text)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "复制失败: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/**
+ * 连接到WiFi
+ */
+fun connectToWifi(context: Context, wifiQrCode: String) {
+    try {
+        // 解析WiFi二维码格式: WIFI:T:WPA;S:networkname;P:password;H:false;
+        val wifiInfo = parseWifiQrCode(wifiQrCode)
+        if (wifiInfo != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Android 10+ 使用新的WiFi连接方式
+                connectWifiAndroid10Plus(context, wifiInfo)
+            } else {
+                // Android 9 及以下使用旧的方式
+                connectWifiLegacy(context, wifiInfo)
+            }
+        } else {
+            Toast.makeText(context, "WiFi二维码格式错误", Toast.LENGTH_SHORT).show()
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "WiFi连接失败: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/**
+ * 解析WiFi二维码
+ */
+data class WifiInfo(
+    val ssid: String,
+    val password: String,
+    val security: String,
+    val hidden: Boolean = false
+)
+
+fun parseWifiQrCode(qrCode: String): WifiInfo? {
+    try {
+        if (!qrCode.startsWith("WIFI:")) return null
+        
+        val parts = qrCode.substring(5).split(";")
+        var ssid = ""
+        var password = ""
+        var security = "WPA"
+        var hidden = false
+        
+        for (part in parts) {
+            when {
+                part.startsWith("S:") -> ssid = part.substring(2)
+                part.startsWith("P:") -> password = part.substring(2)
+                part.startsWith("T:") -> security = part.substring(2)
+                part.startsWith("H:") -> hidden = part.substring(2).equals("true", ignoreCase = true)
+            }
+        }
+        
+        return if (ssid.isNotEmpty()) {
+            WifiInfo(ssid, password, security, hidden)
+        } else null
+    } catch (e: Exception) {
+        e.printStackTrace()
+        return null
+    }
+}
+
+/**
+ * Android 10+ WiFi连接
+ */
+@androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
+fun connectWifiAndroid10Plus(context: Context, wifiInfo: WifiInfo) {
+    try {
+        // Android 10+ 需要用户手动连接，我们只能打开WiFi设置
+        val intent = Intent(Settings.ACTION_WIFI_SETTINGS)
+        context.startActivity(intent)
+        Toast.makeText(context, "请在WiFi设置中手动连接到: ${wifiInfo.ssid}", Toast.LENGTH_LONG).show()
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "无法打开WiFi设置", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/**
+ * Android 9及以下WiFi连接
+ */
+@Suppress("DEPRECATION")
+fun connectWifiLegacy(context: Context, wifiInfo: WifiInfo) {
+    try {
+        val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        
+        // 检查WiFi是否开启
+        if (!wifiManager.isWifiEnabled) {
+            Toast.makeText(context, "请先开启WiFi", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        val wifiConfig = WifiConfiguration().apply {
+            SSID = "\"${wifiInfo.ssid}\""
+            
+            when (wifiInfo.security.uppercase()) {
+                "WEP" -> {
+                    wepKeys[0] = "\"${wifiInfo.password}\""
+                    wepTxKeyIndex = 0
+                    allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE)
+                    allowedGroupCiphers.set(WifiConfiguration.GroupCipher.WEP40)
+                }
+                "WPA", "WPA2" -> {
+                    preSharedKey = "\"${wifiInfo.password}\""
+                    allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK)
+                }
+                "NONE" -> {
+                    allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE)
+                }
+            }
+            
+            hiddenSSID = wifiInfo.hidden
+        }
+        
+        val networkId = wifiManager.addNetwork(wifiConfig)
+        if (networkId != -1) {
+            wifiManager.disconnect()
+            wifiManager.enableNetwork(networkId, true)
+            wifiManager.reconnect()
+            Toast.makeText(context, "正在连接到: ${wifiInfo.ssid}", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "WiFi配置添加失败", Toast.LENGTH_SHORT).show()
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "WiFi连接失败: ${e.message}", Toast.LENGTH_SHORT).show()
     }
 }
 

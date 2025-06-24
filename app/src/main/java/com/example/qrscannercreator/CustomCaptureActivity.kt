@@ -192,7 +192,7 @@ class CustomCaptureActivity : CaptureActivity() {
         try {
             val scannedText = result.text
             val format = result.barcodeFormat.toString()
-            
+
             // 延迟一点时间让用户看到反馈，然后返回结果
             Handler(Looper.getMainLooper()).postDelayed({
                 // 创建返回的Intent
