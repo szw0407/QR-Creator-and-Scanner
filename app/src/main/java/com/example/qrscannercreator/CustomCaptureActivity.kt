@@ -193,15 +193,6 @@ class CustomCaptureActivity : CaptureActivity() {
             val scannedText = result.text
             val format = result.barcodeFormat.toString()
             
-            // 播放提示音
-            playBeepSound()
-            
-            // 更新状态显示
-            statusView.text = "扫描成功: $format"
-            
-            // 显示Toast提示
-            Toast.makeText(this, "扫码成功！", Toast.LENGTH_SHORT).show()
-            
             // 延迟一点时间让用户看到反馈，然后返回结果
             Handler(Looper.getMainLooper()).postDelayed({
                 // 创建返回的Intent
