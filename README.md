@@ -2,6 +2,12 @@
 
 A modern Android app for QR code generation and scanning, supporting WiFi quick connect, logo QR, and more. (Min SDK: Android 11)
 
+## Background
+
+这原本是我在 2025 年的“移动互联网开发课程”的一次作业而已。但是我意识到这个功能，如果全部实现了，甚至比很多现有的应用都要好用，所以就决定把它开源出来，以供大家使用。
+
+曾经（以及现在）我使用的扫描二维码的软件（除了微信、支付宝之类），是[QR Scanner](https://fxedel.gitlab.io/fdroid-website/en/packages/com.secuso.privacyFriendlyCodeScanner/)（F-Droid 上的某款开源应用），对比一看功能上都差不多了（没实现的以后可以实现，无所谓），UI和依赖库倒是都现代化了很多，功能也会有一些改进和增强。
+
 ## Features
 
 - **QR Code Generation**
