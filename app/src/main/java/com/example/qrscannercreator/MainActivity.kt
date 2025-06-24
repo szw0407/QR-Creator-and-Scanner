@@ -27,6 +27,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -68,6 +69,7 @@ import androidx.core.graphics.createBitmap
 import androidx.core.net.toUri
 import java.text.SimpleDateFormat
 import java.util.Locale
+import androidx.core.graphics.scale
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -210,7 +212,8 @@ fun QRCodeApp() {
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
             maxLines = 3
         )
-          // 错误纠正级别选择
+        
+        // 错误纠正级别选择
         Card(
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -379,7 +382,7 @@ fun QRCodeApp() {
                         Text("选择Logo图片 (可选)")
                     }
                 }
-                if (selectedLogoUri != null) {
+                  if (selectedLogoUri != null) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "Logo将保持原始形状并居中放置，支持PNG透明背景。建议使用Q或H纠错级别以确保识别率。",
@@ -393,7 +396,8 @@ fun QRCodeApp() {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {            Button(
+        ) {
+            Button(
                 onClick = {
                     val logobitmap = selectedLogoUri?.let { uri ->
                         loadBitmapFromUri(context, uri)
@@ -848,29 +852,25 @@ fun connectToWifiWithPermissionCheck(
         }
         
         // Android 10+需要位置权限
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val hasLocationPermission = ContextCompat.checkSelfPermission(
-                context, 
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-            
-            if (!hasLocationPermission) {
-                // 储存待连接的WiFi信息
-                setPendingWifi(wifiQrCode)
-                
-                // 请求位置权限
-                Toast.makeText(
-                    context, 
-                    "连接WiFi需要位置权限，正在请求权限...", 
-                    Toast.LENGTH_SHORT
-                ).show()
-                
-                locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-                return
-            }
+        val hasLocationPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!hasLocationPermission) {
+            // 储存待连接的WiFi信息
+            setPendingWifi(wifiQrCode)
+
+            // 请求位置权限
+            Toast.makeText(
+                context,
+                "连接WiFi需要位置权限，正在请求权限...",
+                Toast.LENGTH_SHORT
+            ).show()
+
+            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            return
         }
-        
-        // 有权限或Android 9-，直接连接
         connectToWifi(context, wifiQrCode)
         
     } catch (e: Exception) {
@@ -884,10 +884,9 @@ fun connectToWifiWithPermissionCheck(
  */
 fun connectToWifi(context: Context, wifiQrCode: String) {
     try {
-        // 解析WiFi二维码格式: WIFI:T:WPA;S:networkname;P:password;H:false;
         val wifiInfo = parseWifiQrCode(wifiQrCode)
         if (wifiInfo != null) {
-            // Android 10+ 使用新的WiFi连接方式
+            // Android 11+ 使用新的WiFi连接方式
             requestNetworkConnection(
                 context,
                 wifiInfo
@@ -939,61 +938,98 @@ fun parseWifiQrCode(qrCode: String): WifiInfo? {
     }
 }
 /**
- * Android 11+ 使用NetworkRequest请求网络连接
+ * Android 11+ 推荐方式：使用 WifiNetworkSuggestion 建议网络，支持 WPA1/2/3 Personal/Enterprise。
+ * 不能静默修改系统 WiFi 配置，需用户在系统设置中确认。
  */
+
+
 fun requestNetworkConnection(context: Context, wifiInfo: WifiInfo) {
     try {
-        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        
-        val networkSpecifier = WifiNetworkSpecifier.Builder()
-            .setSsid(wifiInfo.ssid)
-            .apply {
-                when (wifiInfo.security.uppercase()) {
-                    "WPA", "WPA2", "WPA3" -> {
-                        setWpa2Passphrase(wifiInfo.password)
+        val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+        val suggestions = mutableListOf<android.net.wifi.WifiNetworkSuggestion>()
 
-                    }
-                    "WEP" -> {
-                        // WEP在新API中不推荐，降级为WPA2
-                        setWpa2Passphrase(wifiInfo.password)
-                    }
-                    "NONE" -> {
-                        // 开放网络
-                    }
-                }
-                
-                if (wifiInfo.hidden) {
-                    setIsHiddenSsid(true)
-                }
+        when (wifiInfo.security.uppercase()) {
+            "WPA", "WPA2" -> {
+                // Personal 模式
+                suggestions.add(
+                    android.net.wifi.WifiNetworkSuggestion.Builder()
+                        .setSsid(wifiInfo.ssid)
+                        .setWpa2Passphrase(wifiInfo.password)
+                        .apply {
+                            if (wifiInfo.hidden) setIsHiddenSsid(true)
+                        }
+                        .build()
+                )
+            }"WPA3", "SAE" ->{
+                suggestions.add(
+                    android.net.wifi.WifiNetworkSuggestion.Builder()
+                        .setSsid(wifiInfo.ssid)
+                        .setWpa3Passphrase(wifiInfo.password)
+                        .apply {
+                            if (wifiInfo.hidden) setIsHiddenSsid(true)
+                            if (wifiInfo.security.uppercase() == "SAE"
+                                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                                ) {
+                                setIsWpa3SaeH2eOnlyModeEnabled(true);
+                            }
+                        }
+                        .build()
+                )
             }
-            .build()
-
-        val networkRequest = NetworkRequest.Builder()
-            .addTransportType(android.net.NetworkCapabilities.TRANSPORT_WIFI)
-            .setNetworkSpecifier(networkSpecifier)
-            .build()
-
-        val networkCallback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: android.net.Network) {
-                super.onAvailable(network)
-                // 网络连接成功
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    Toast.makeText(context, "已连接到WiFi: ${wifiInfo.ssid}", Toast.LENGTH_SHORT).show()
-                }
+            "WEP" -> {
+                // WEP 已不推荐，降级为 WPA2
+                suggestions.add(
+                    android.net.wifi.WifiNetworkSuggestion.Builder()
+                        .setSsid(wifiInfo.ssid)
+                        .setWpa2Passphrase(wifiInfo.password)
+                        .apply {
+                            if (wifiInfo.hidden) setIsHiddenSsid(true)
+                        }
+                        .build()
+                )
             }
-
-            override fun onUnavailable() {
-                super.onUnavailable()
-                // 连接失败
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    Toast.makeText(context, "连接WiFi失败，请检查密码或手动连接", Toast.LENGTH_LONG).show()
-                }
+            "NONE", "NOPASS" -> {
+                // 开放网络
+                suggestions.add(
+                    android.net.wifi.WifiNetworkSuggestion.Builder()
+                        .setSsid(wifiInfo.ssid)
+                        .apply {
+                            if (wifiInfo.hidden) setIsHiddenSsid(true)
+                        }
+                        .build()
+                )
+            }
+            "WAPI" -> {
+                android.net.wifi.WifiNetworkSuggestion.Builder()
+                    .setSsid(wifiInfo.ssid)
+                    .setWapiPassphrase(wifiInfo.password)
+                    .apply {
+                        if (wifiInfo.hidden) setIsHiddenSsid(true)
+                    }
+                    .build()
+            }
+            "EAP", "WPA2-EAP", "WPA3-EAP" -> {
+                Toast.makeText(context, "暂不支持企业WiFi(EAP)", Toast.LENGTH_SHORT).show()
+                return
+            }
+            else -> {
+                Toast.makeText(context, "暂不支持的加密类型: ${wifiInfo.security}", Toast.LENGTH_SHORT).show()
+                return
             }
         }
 
-        connectivityManager.requestNetwork(networkRequest, networkCallback, 10000) // 10秒超时
-        Toast.makeText(context, "正在尝试连接到: ${wifiInfo.ssid}...", Toast.LENGTH_SHORT).show()
-        
+        // 移除旧建议，避免冲突
+        wifiManager.removeNetworkSuggestions(mutableListOf())
+        val status = wifiManager.addNetworkSuggestions(suggestions)
+        if (status == android.net.wifi.WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS) {
+            Toast.makeText(context, "已提交WiFi建议，请在系统设置中确认连接", Toast.LENGTH_LONG).show()
+            // 跳转到 WiFi 设置页面，用户确认后可全局联网
+            val intent = Intent(android.provider.Settings.ACTION_WIFI_SETTINGS)
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            context.startActivity(intent)
+        } else {
+            Toast.makeText(context, "WiFi建议提交失败，错误码: $status", Toast.LENGTH_LONG).show()
+        }
     } catch (e: Exception) {
         e.printStackTrace()
         Toast.makeText(context, "网络请求失败: ${e.message}", Toast.LENGTH_SHORT).show()
