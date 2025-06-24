@@ -233,13 +233,34 @@ fun QRCodeApp() {
                 
                 val currentLevelIndex = levels.indexOfFirst { it.first == errorCorrectionLevel }
                 var sliderValue by remember { mutableFloatStateOf(currentLevelIndex.toFloat()) }
-                
-                Column {
+                  Column {
                     Text(
                         text = "当前级别: ${levels[sliderValue.toInt()].second}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
+                    
+                    // 显示Logo与纠错级别的兼容性警告
+                    if (selectedLogoUri != null) {
+                        val isLevelSufficient = errorCorrectionLevel == ErrorCorrectionLevel.H || 
+                                               errorCorrectionLevel == ErrorCorrectionLevel.Q
+                        
+                        if (!isLevelSufficient) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "⚠️ 建议使用Q或H级别以确保带Logo的二维码可被正确识别",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        } else {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "✓ 当前级别适合带Logo的二维码",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
@@ -358,10 +379,10 @@ fun QRCodeApp() {
                         Text("选择Logo图片 (可选)")
                     }
                 }
-                  if (selectedLogoUri != null) {
+                if (selectedLogoUri != null) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Logo将保持原始形状并居中放置，支持PNG透明背景",
+                        text = "Logo将保持原始形状并居中放置，支持PNG透明背景。建议使用Q或H纠错级别以确保识别率。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -372,12 +393,21 @@ fun QRCodeApp() {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
+        ) {            Button(
                 onClick = {
                     val logobitmap = selectedLogoUri?.let { uri ->
                         loadBitmapFromUri(context, uri)
                     }
+                    
+                    // 检查Logo与纠错级别的兼容性
+                    if (logobitmap != null && (errorCorrectionLevel == ErrorCorrectionLevel.L || errorCorrectionLevel == ErrorCorrectionLevel.M)) {
+                        Toast.makeText(
+                            context, 
+                            "警告：当前纠错级别可能导致带Logo的二维码难以识别，建议使用Q或H级别", 
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    
                     qrBitmap = generateQRCodeWithLogo(inputText, logobitmap, errorCorrectionLevel)
                 },
                 modifier = Modifier.weight(1f)
