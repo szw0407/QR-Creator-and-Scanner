@@ -42,4 +42,4 @@ A modern Android app for QR code generation and scanning, supporting WiFi quick 
 
 **Note:**
 - WiFi connection uses Android's official suggestion API, user confirmation is required for security reasons.
-- Enterprise WiFi (EAP) is not supported due to platform limitations.
+- Enterprise WiFi (EAP) is not supported yet due to lack of testing environment. If anyone can provide an EAP network QR codes for testing, please let me know via issues.
