@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black">
+
+    <com.journeyapps.barcodescanner.DecoratedBarcodeView
+        android:id="@+id/zxing_barcode_scanner"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <TextView
+        android:id="@+id/zxing_status_view"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="80dp"
+        android:background="@android:color/transparent"
+        android:text="扫描条码或二维码"
+        android:textColor="@android:color/white"
+        android:textSize="16sp" />
+
+    <!-- 闪光灯控制按钮 -->
+    <Button
+        android:id="@+id/flashlight_button"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="16dp"
+        android:background="@android:drawable/btn_dialog"
+        android:text="💡"
+        android:textColor="@android:color/white"
+        android:textSize="20sp"
+        android:backgroundTint="#80000000"
+        android:elevation="4dp" />
+
+</FrameLayout>
