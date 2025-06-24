@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "My12qstring"
-include ':app'
+rootProject.name = "QR Scanner & Creator"
+include(":app")
