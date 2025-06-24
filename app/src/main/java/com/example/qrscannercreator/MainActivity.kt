@@ -210,8 +210,7 @@ fun QRCodeApp() {
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
             maxLines = 3
         )
-        
-        // 错误纠正级别选择
+          // 错误纠正级别选择
         Card(
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -224,24 +223,49 @@ fun QRCodeApp() {
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val levels = listOf(
-                        ErrorCorrectionLevel.L to "L (7%)",
-                        ErrorCorrectionLevel.M to "M (15%)",
-                        ErrorCorrectionLevel.Q to "Q (25%)",
-                        ErrorCorrectionLevel.H to "H (30%)"
+                // 使用滑动条选择纠错级别
+                val levels = listOf(
+                    ErrorCorrectionLevel.L to "L (7%)",
+                    ErrorCorrectionLevel.M to "M (15%)",
+                    ErrorCorrectionLevel.Q to "Q (25%)",
+                    ErrorCorrectionLevel.H to "H (30%)"
+                )
+                
+                val currentLevelIndex = levels.indexOfFirst { it.first == errorCorrectionLevel }
+                var sliderValue by remember { mutableFloatStateOf(currentLevelIndex.toFloat()) }
+                
+                Column {
+                    Text(
+                        text = "当前级别: ${levels[sliderValue.toInt()].second}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary
                     )
                     
-                    levels.forEach { (level, label) ->
-                        FilterChip(
-                            onClick = { errorCorrectionLevel = level },
-                            label = { Text(label) },
-                            selected = errorCorrectionLevel == level,
-                            modifier = Modifier.weight(1f)
-                        )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Slider(
+                        value = sliderValue,
+                        onValueChange = { 
+                            sliderValue = it
+                            errorCorrectionLevel = levels[it.toInt()].first
+                        },
+                        valueRange = 0f..3f,
+                        steps = 2,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    // 显示级别标签
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        levels.forEach { (_, label) ->
+                            Text(
+                                text = label.split(" ")[0], // 只显示字母部分
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
                 
