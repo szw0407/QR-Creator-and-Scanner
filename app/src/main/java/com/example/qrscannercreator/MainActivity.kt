@@ -748,7 +748,7 @@ fun decodeQRCode(bitmap: Bitmap): String? {
         val source = RGBLuminanceSource(width, height, pixels)
         val binaryBitmap = BinaryBitmap(HybridBinarizer(source))
         val result = MultiFormatReader().decode(binaryBitmap, hints)
-          result.text
+        return result.text
     } catch (e: NotFoundException) {
         e.printStackTrace()
         null
