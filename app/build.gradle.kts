@@ -11,7 +11,7 @@ android {
     defaultConfig {
         applicationId = "com.example.qrscannercreator"
         minSdk = 30
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
@@ -57,6 +57,8 @@ dependencies {
     // For image handling
     implementation(libs.androidx.activity.ktx)
     implementation(libs.androidx.fragment.ktx)
+    // vCard 解析库
+    implementation(libs.ez.vcard)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

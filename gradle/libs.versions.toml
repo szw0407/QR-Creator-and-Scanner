@@ -1,6 +1,7 @@
 [versions]
 agp = "8.10.1"
 core = "3.5.2"
+ezVcard = "0.12.1"
 fragmentKtx = "1.8.8"
 kotlin = "2.0.21"
 coreKtx = "1.16.0"
@@ -9,7 +10,7 @@ junitVersion = "1.2.1"
 espressoCore = "3.6.1"
 lifecycleRuntimeKtx = "2.9.1"
 activityCompose = "1.10.1"
-composeBom = "2024.09.00"
+composeBom = "2025.06.01"
 zxingAndroidEmbedded = "4.3.0"
 
 [libraries]
@@ -17,6 +18,7 @@ androidx-activity-ktx = { module = "androidx.activity:activity-ktx", version.ref
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-fragment-ktx = { module = "androidx.fragment:fragment-ktx", version.ref = "fragmentKtx" }
 core = { module = "com.google.zxing:core", version.ref = "core" }
+ez-vcard = { module = "com.googlecode.ez-vcard:ez-vcard", version.ref = "ezVcard" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
