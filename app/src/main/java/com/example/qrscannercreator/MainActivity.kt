@@ -70,6 +70,9 @@ import androidx.core.net.toUri
 import java.text.SimpleDateFormat
 import java.util.Locale
 import androidx.core.graphics.scale
+import ezvcard.Ezvcard
+import ezvcard.VCard
+import ezvcard.property.*
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -78,7 +81,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             QRScannerCreatorTheme {
                 Surface(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.safeDrawing),
                     color = MaterialTheme.colorScheme.background
                 ) {
                     QRCodeApp()
@@ -508,81 +513,84 @@ fun QRCodeApp() {
         }
           // 显示解码结果
         if (decodedText.isNotEmpty()) {
-            Card(
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
+            val vcard = remember(decodedText) { if (isVCard(decodedText)) parseVCard(decodedText) else null }
+            if (vcard != null) {
+                VCardDisplayCard(vcard) {
+                    importVCardToContacts(context, vcard)
+                }
+            } else {
+                Card(
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = "解码结果:",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    // 可点击和长按的解码结果文本
-                    Text(
-                        text = decodedText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .combinedClickable(
-                                onClick = {
-                                    handleScanResultAction(context, decodedText)
-                                },
-                                onLongClick = {
-                                    copyToClipboard(context, decodedText)
-                                }
-                            )
-                            .padding(8.dp)
-                    )
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    // 提示信息
-                    Text(
-                        text = "点击执行操作，长按复制",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    // 根据内容类型显示特定按钮
-                    when {                        decodedText.startsWith("WIFI:") -> {
-                            Button(
-                                onClick = {
-                                    connectToWifiWithPermissionCheck(
-                                        context, 
-                                        decodedText, 
-                                        locationPermissionLauncher
-                                    ) { wifiQrCode ->
-                                        pendingWifiInfo = wifiQrCode
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text(
+                            text = "解码结果:",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        // 可点击和长按的解码结果文本
+                        Text(
+                            text = decodedText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .combinedClickable(
+                                    onClick = {
+                                        handleScanResultAction(context, decodedText)
+                                    },
+                                    onLongClick = {
+                                        copyToClipboard(context, decodedText)
                                     }
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("连接到WiFi")
+                                )
+                                .padding(8.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        // 提示信息
+                        Text(
+                            text = "点击执行操作，长按复制",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        // 根据内容类型显示特定按钮
+                        when {
+                            decodedText.startsWith("WIFI:") -> {
+                                Button(
+                                    onClick = {
+                                        connectToWifiWithPermissionCheck(
+                                            context, 
+                                            decodedText, 
+                                            locationPermissionLauncher
+                                        ) { wifiQrCode ->
+                                            pendingWifiInfo = wifiQrCode
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("连接到WiFi")
+                                }
                             }
-                        }
-                        isUrl(decodedText) -> {
-                            Button(
-                                onClick = {
-                                    openUrl(context, decodedText)
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("打开链接")
+                            isUrl(decodedText) -> {
+                                Button(
+                                    onClick = {
+                                        openUrl(context, decodedText)
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("打开链接")
+                                }
                             }
-                        }
-                        isDomainLike(decodedText) -> {
-                            Button(
-                                onClick = {
-                                    openUrl(context, "https://$decodedText")
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("作为网址打开")
+                            isDomainLike(decodedText) -> {
+                                Button(
+                                    onClick = {
+                                        openUrl(context, "https://$decodedText")
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("作为网址打开")
+                                }
                             }
                         }
                     }
@@ -1017,8 +1025,7 @@ fun requestNetworkConnection(context: Context, wifiInfo: WifiInfo) {
                 return
             }
         }
-
-        // 移除旧建议，避免冲突
+        
         wifiManager.removeNetworkSuggestions(mutableListOf())
         val status = wifiManager.addNetworkSuggestions(suggestions)
         if (status == android.net.wifi.WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS) {
@@ -1035,6 +1042,115 @@ fun requestNetworkConnection(context: Context, wifiInfo: WifiInfo) {
         Toast.makeText(context, "网络请求失败: ${e.message}", Toast.LENGTH_SHORT).show()
     }
 }
+
+// vCard 解析与UI展示
+fun isVCard(text: String): Boolean {
+    return text.trim().startsWith("BEGIN:VCARD", ignoreCase = true)
+}
+
+@Composable
+fun VCardDisplayCard(vcard: VCard, onImport: (() -> Unit)? = null) {
+    val name = vcard.formattedName?.value ?: vcard.structuredName?.let {
+        listOfNotNull(it.given, it.family).joinToString(" ")
+    } ?: "(无姓名)"
+    val phones = vcard.telephoneNumbers.mapNotNull { it.text }
+    val emails = vcard.emails.mapNotNull { it.value }
+    val org = vcard.organizations.firstOrNull()?.values?.joinToString() ?: ""
+    val title = vcard.titles.firstOrNull()?.value ?: ""
+    val address = vcard.addresses.firstOrNull()?.let {
+        listOfNotNull(it.streetAddress, it.locality, it.region, it.postalCode, it.country).filter { it.isNotBlank() }.joinToString(", ")
+    } ?: ""
+    val note = vcard.notes.firstOrNull()?.value ?: ""
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(text = "联系人信息", style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(text = "姓名: $name", style = MaterialTheme.typography.bodyMedium)
+            if (phones.isNotEmpty()) {
+                Text(text = "电话: ${phones.joinToString()}" , style = MaterialTheme.typography.bodyMedium)
+            }
+            if (emails.isNotEmpty()) {
+                Text(text = "邮箱: ${emails.joinToString()}" , style = MaterialTheme.typography.bodyMedium)
+            }
+            if (org.isNotBlank()) {
+                Text(text = "单位: $org", style = MaterialTheme.typography.bodyMedium)
+            }
+            if (title.isNotBlank()) {
+                Text(text = "职位: $title", style = MaterialTheme.typography.bodyMedium)
+            }
+            if (address.isNotBlank()) {
+                Text(text = "地址: $address", style = MaterialTheme.typography.bodyMedium)
+            }
+            if (note.isNotBlank()) {
+                Text(text = "备注: $note", style = MaterialTheme.typography.bodyMedium)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            if (onImport != null) {
+                Button(onClick = onImport, modifier = Modifier.fillMaxWidth()) {
+                    Text("导入到联系人")
+                }
+            }
+        }
+    }
+}
+
+fun parseVCard(text: String): VCard? {
+    return try {
+        Ezvcard.parse(text).first()
+    } catch (e: Exception) {
+        null
+    }
+}
+
+fun importVCardToContacts(context: Context, vcard: VCard) {
+    val intent = Intent(Intent.ACTION_INSERT_OR_EDIT).apply {
+        type = "vnd.android.cursor.item/contact"
+        // 姓名
+        putExtra(android.provider.ContactsContract.Intents.Insert.NAME, vcard.formattedName?.value ?: vcard.structuredName?.let {
+            listOfNotNull(it.given, it.family).joinToString(" ")
+        } ?: "")
+        // 多个电话
+        vcard.telephoneNumbers.forEachIndexed { idx, tel ->
+            val key = if (idx == 0) android.provider.ContactsContract.Intents.Insert.PHONE else android.provider.ContactsContract.Intents.Insert.PHONE + idx
+            putExtra(key, tel.text)
+        }
+        // 多个邮箱
+        vcard.emails.forEachIndexed { idx, email ->
+            val key = if (idx == 0) android.provider.ContactsContract.Intents.Insert.EMAIL else android.provider.ContactsContract.Intents.Insert.EMAIL + idx
+            putExtra(key, email.value)
+        }
+        // 公司
+        vcard.organizations.firstOrNull()?.values?.firstOrNull()?.let {
+            putExtra(android.provider.ContactsContract.Intents.Insert.COMPANY, it)
+        }
+        // 职位
+        vcard.titles.firstOrNull()?.value?.let {
+            putExtra(android.provider.ContactsContract.Intents.Insert.JOB_TITLE, it)
+        }
+        // 地址
+        vcard.addresses.firstOrNull()?.let { addr ->
+            val addressStr = listOfNotNull(addr.streetAddress, addr.locality, addr.region, addr.postalCode, addr.country)
+                .filter { it.isNotBlank() }.joinToString(", ")
+            putExtra(android.provider.ContactsContract.Intents.Insert.POSTAL, addressStr)
+        }
+        // 备注
+        vcard.notes.firstOrNull()?.value?.let {
+            putExtra(android.provider.ContactsContract.Intents.Insert.NOTES, it)
+        }
+        // 网站
+        vcard.urls.firstOrNull()?.value?.let {
+            putExtra(android.provider.ContactsContract.Intents.Insert.DATA, it)
+        }
+        // 其它自定义字段可继续扩展
+    }
+    try {
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        Toast.makeText(context, "无法打开联系人导入界面", Toast.LENGTH_SHORT).show()
+    }
+}
+
 @Preview(showBackground = true)
 @Composable
 fun QRCodeAppPreview() {
