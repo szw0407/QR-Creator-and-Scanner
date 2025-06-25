@@ -28,6 +28,11 @@ A modern Android app for QR code generation and scanning, supporting WiFi quick 
   - Permission check and user guidance for WiFi connection
   - Enterprise WiFi/EAP is not supported yet as I have no access to an EAP network for testing
 
+- **QR Vcard Support**
+  - Recognize QR codes containing vCard data
+  - Display contact information with options to save to contacts or copy to clipboard
+  - Save into the device's contacts app
+
 - **Barcode Support**
   - Custom scan activity: scans all major 1D/2D barcodes (QR, Code128, EAN, PDF417, DataMatrix, etc.)
   - Orientation-aware: landscape for barcodes, portrait for QR
